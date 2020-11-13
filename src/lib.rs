@@ -56,12 +56,12 @@
 //!
 //! ```
 
-use std::mem;
 use std::cmp;
-use std::usize;
 use std::default::Default;
-use std::slice;
 use std::fmt;
+use std::mem;
+use std::slice;
+use std::usize;
 
 struct Chunk {
     data: Vec<u8>,
@@ -102,10 +102,10 @@ impl Arena {
     /// The chosen capacity does not limit the final size of the arena.
     pub fn with_capacity(capacity: usize) -> Arena {
         Arena {
-            head: Chunk{
+            head: Chunk {
                 data: Vec::with_capacity(capacity),
                 next: None,
-            }
+            },
         }
     }
 
@@ -121,9 +121,7 @@ impl Arena {
 
     /// Construct an Allocator for this arena.
     pub fn allocator(&mut self) -> Allocator {
-        Allocator {
-            arena: self
-        }
+        Allocator { arena: self }
     }
 
     /// Get the number of bytes of memory that have been allocated
@@ -136,8 +134,12 @@ impl Arena {
         loop {
             total_capacity += iter.data.capacity();
             match iter.next {
-                None => { return total_capacity; }
-                Some(ref next) => { iter = next; }
+                None => {
+                    return total_capacity;
+                }
+                Some(ref next) => {
+                    iter = next;
+                }
             }
         }
     }
@@ -145,7 +147,10 @@ impl Arena {
 
 impl fmt::Debug for Arena {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!("Arena {{ capacity_bytes: {} }}", self.capacity()))
+        f.write_fmt(format_args!(
+            "Arena {{ capacity_bytes: {} }}",
+            self.capacity()
+        ))
     }
 }
 
@@ -164,11 +169,11 @@ impl<'a> Allocator<'a> {
     fn alloc_raw(&mut self, size: usize, align: usize) -> &'a mut u8 {
         loop {
             match self.arena.head.attempt_alloc(size, align) {
-                Some(x) => { return unsafe { mem::transmute(x) } },
+                Some(x) => return unsafe { mem::transmute(x) },
                 None => {
                     // Double the current allocation (or the asked for one), but don't overflow.
                     let minimum_reasonable = cmp::max(self.arena.head.data.len(), size);
-                    let new_chunk_size = 2 * cmp::min(minimum_reasonable, usize::MAX/2);
+                    let new_chunk_size = 2 * cmp::min(minimum_reasonable, usize::MAX / 2);
                     self.arena.add_chunk(new_chunk_size);
                 }
             }
@@ -184,17 +189,19 @@ impl<'a> Allocator<'a> {
     }
 
     /// Allocate a default-valued object
-    pub fn alloc_default<T: Copy+Default>(&mut self) -> &'a mut T {
+    pub fn alloc_default<T: Copy + Default>(&mut self) -> &'a mut T {
         self.alloc(Default::default())
     }
 
     /// Allocate and leave uninitialized a slice of the given length
     fn alloc_slice_raw<T>(&mut self, len: usize) -> &'a mut [T] {
-        let element_size = mem::size_of::<[T;2]>() / 2;
-        assert_eq!(mem::size_of::<[T;7]>(), 7 * element_size);
-        let byte_count = element_size.checked_mul(len).expect("Arena slice size overflow");
+        let element_size = mem::size_of::<[T; 2]>() / 2;
+        assert_eq!(mem::size_of::<[T; 7]>(), 7 * element_size);
+        let byte_count = element_size
+            .checked_mul(len)
+            .expect("Arena slice size overflow");
         let memory = self.alloc_raw(byte_count, mem::min_align_of::<T>());
-        let res: &'a mut [T] = unsafe { slice::from_raw_parts_mut( mem::transmute(memory), len) };
+        let res: &'a mut [T] = unsafe { slice::from_raw_parts_mut(mem::transmute(memory), len) };
         res
     }
 
@@ -209,8 +216,9 @@ impl<'a> Allocator<'a> {
 
     /// Allocate and populate a slice, creating each element as a function
     /// of its index.
-    pub fn alloc_slice_fn<T: Copy, F>(&mut self, len: usize, mut f: F)-> &'a mut [T]
-        where F: FnMut(usize) -> T
+    pub fn alloc_slice_fn<T: Copy, F>(&mut self, len: usize, mut f: F) -> &'a mut [T]
+    where
+        F: FnMut(usize) -> T,
     {
         let mut slice = self.alloc_slice_raw(len);
         for (idx, dest) in slice.iter_mut().enumerate() {
@@ -220,11 +228,10 @@ impl<'a> Allocator<'a> {
     }
 
     /// Allocate a slice populated by default-valued elements.
-    pub fn alloc_slice_default<T: Copy+Default>(&mut self, len: usize)-> &'a mut [T] {
+    pub fn alloc_slice_default<T: Copy + Default>(&mut self, len: usize) -> &'a mut [T] {
         self.alloc_slice_fn(len, |_| Default::default())
     }
 }
-
 
 #[test]
 fn construct_simple() {
@@ -269,7 +276,6 @@ fn many_u8s() {
     assert!(arena.head.data.capacity() > 52);
 }
 
-
 #[test]
 fn zero_capacity() {
     let mut arena = Arena::with_capacity(0);
@@ -277,8 +283,8 @@ fn zero_capacity() {
 
     assert_eq!(*arena.allocator().alloc(9u32), 9u32);
 
-    assert!(arena.head.data.capacity()>=4);
-    assert!(arena.head.data.len()==4);
+    assert!(arena.head.data.capacity() >= 4);
+    assert!(arena.head.data.len() == 4);
 }
 
 #[test]
@@ -290,7 +296,7 @@ fn surprisingly_large() {
     {
         let mut allocator = arena.allocator();
         let x = allocator.alloc(7u32);
-        let ys : &[u8] = allocator.alloc_slice_default(600);
+        let ys: &[u8] = allocator.alloc_slice_default(600);
 
         assert_eq!(*x, 7u32);
         assert_eq!(ys.len(), 600);
@@ -307,10 +313,10 @@ fn construct_slices() {
     let mut allocator = arena.allocator();
 
     let s = ::std::str::from_utf8(allocator.alloc_slice(b"abc")).unwrap();
-    let xs: &[i32] = allocator.alloc_slice_fn(10, |idx| (idx as i32)*7);
+    let xs: &[i32] = allocator.alloc_slice_fn(10, |idx| (idx as i32) * 7);
     let ys: &[u64] = allocator.alloc_slice_default(4);
 
-    assert_eq!(xs[9], 9*7);
+    assert_eq!(xs[9], 9 * 7);
     assert_eq!(s, "abc");
     assert_eq!(ys[0], 0);
 }
@@ -321,7 +327,7 @@ fn zero_size() {
     {
         let mut allocator = arena.allocator();
 
-        let many_units = allocator.alloc_slice_fn(500, |_| () );
+        let many_units = allocator.alloc_slice_fn(500, |_| ());
         assert_eq!(many_units.len(), 500);
     }
     assert_eq!(arena.capacity(), 4);
